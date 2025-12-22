@@ -1,8 +1,8 @@
-FROM golang:alpine as builder
+FROM golang:alpine AS builder
 
-RUN mkdir /builder
+RUN mkdir /build
 
-Add ./build/
+Add . /build/
 
 WORKDIR /build
 
@@ -22,6 +22,6 @@ COPY --from=builder /build/main /app/main
 
 WORKDIR /app
 
-Expose 3000
+EXPOSE 3000
 
 CMD ["./main"]
