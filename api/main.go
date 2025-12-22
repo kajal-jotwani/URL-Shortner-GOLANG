@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-
+	"github.com/kajal-jotwani/URL-Shortner-GOLANG/api/routes"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
@@ -22,7 +22,7 @@ func main() {
 		fmt.Println(err)
 	}
 
-	app := fibre.New()
+	app := fiber.New()
 
 	app.Use(logger.New())
 

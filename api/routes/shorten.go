@@ -2,8 +2,14 @@ package routes
 
 import (
 	"time"
+	"os"
+	"strconv"
 
 	"github.com/asaskevich/govalidator"
+	"github.com/kajal-jotwani/URL-Shortner-GOLANG/database"
+	"github.com/kajal-jotwani/URL-Shortner-GOLANG/helpers"
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 type request struct {
@@ -29,6 +35,26 @@ func ShortenURL(c *fiber.Ctx) error {
 	}
 
 	//implement rate limiting
+
+	r2 := database.CreateClient(1)
+	defer r2.Close()
+
+	val, err := r2.Get(database.Ctx, c.IP()).Result()
+	if err == redis.Nil{
+		_ = r2.Set(database.Ctx, c.IP(), os.Getenv("API_QUOTA"), 30*60*time.Second).Err()
+	} else {
+		val, _ = r2.Get(database.Ctx, c.IP()).Result()
+		valInt, _ := strconv.Atoi(val)
+
+		if valInt <= 0 {
+			limit, _ := r2.TTL(database.Ctx, c.IP()).Result()
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"error": "Rate limit exceeded",
+				"rate_limit_reset": limit / time.Nanosecond / time.Second,
+			})
+		}
+	}
+	 
 	//check if the input is an actual url
 
 	if !govalidator.IsURL(body.URL) {
@@ -44,4 +70,49 @@ func ShortenURL(c *fiber.Ctx) error {
 	//enforce https, SSL
 
 	body.URL = helpers.EnforceHTTP(body.URL)
+
+	var id string
+
+	if body.CustomeShort == "" {
+		id = uuid.New().string()[:6]
+	} else {
+		id = body.CustomeShort
+	}
+
+	r := database.CreateClient(0)
+	defer r.Close()
+
+	val, _ = r.Get(database.Ctx, id).Result()
+	if val != "" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Custom short URL is already in use"})
+	}
+
+	if body.Expiry == 0{
+		body.Expiry = 24
+	}
+
+	err = r.Set(database.Ctx, id, body.URL, body.Expiry*3600*time.Second).Err()
+
+	if err != nil{
+		return c.Status(fiber.StatusInernalServerError).JSON(fiber.Map{"error": "Unable to connect to the server"})
+	}
+
+	resp := response{
+		URL: body.URL,
+		CustomeShort: "",
+		Expiry: body.Expiry,
+		XRateRemaining: 10,
+		XRateLimitReset: 30
+	}
+	r2.Decr(database.Ctx, c.IP())
+
+	val, _ = r2.Get(database.Ctx, c.IP()).Result()
+	resp.XRateRemaining, _ = strconv.Atoi(val)
+
+	ttl, _ := r2.TTL(database.Ctx, c.IP()).Result()
+	resp.XRateLimitReset = ttl / time.Nanosecond / time.Minute
+
+	resp.CustomeShort = os.Getenv("DOMAIN") + "/" + id
+
+	return c.Status(fiber.StatusOK).JSON(resp)
 }
