@@ -9,6 +9,7 @@ import (
 	"github.com/kajal-jotwani/URL-Shortner-GOLANG/database"
 	"github.com/kajal-jotwani/URL-Shortner-GOLANG/helpers"
 	"github.com/gofiber/fiber/v2"
+	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"
 )
 
@@ -31,7 +32,7 @@ func ShortenURL(c *fiber.Ctx) error {
 	body := new(request)
 
 	if err := c.BodyParser(&body); err != nil {
-		return c.Status(fibre.StatusBadRequest).JSON(fibre.Map{"error": "cannot parse JSON"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse JSON"})
 	}
 
 	//implement rate limiting
@@ -58,13 +59,13 @@ func ShortenURL(c *fiber.Ctx) error {
 	//check if the input is an actual url
 
 	if !govalidator.IsURL(body.URL) {
-		return c.Status(fibre.StatusBadRequest).JSON(fibre.Map{"error": "Invalid URL"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid URL"})
 	}
 
 	//check for the domain error
 
 	if !helpers.RemoveDomainError(body.URL) {
-		return c.Status(fibre.StatusServiceUnavailable).JSON(fibre.Map{"error": "You can't hack the system!!"})
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "You can't hack the system!!"})
 	}
 
 	//enforce https, SSL
@@ -74,7 +75,7 @@ func ShortenURL(c *fiber.Ctx) error {
 	var id string
 
 	if body.CustomeShort == "" {
-		id = uuid.New().string()[:6]
+		id = uuid.New().String()[:6]
 	} else {
 		id = body.CustomeShort
 	}
@@ -94,7 +95,7 @@ func ShortenURL(c *fiber.Ctx) error {
 	err = r.Set(database.Ctx, id, body.URL, body.Expiry*3600*time.Second).Err()
 
 	if err != nil{
-		return c.Status(fiber.StatusInernalServerError).JSON(fiber.Map{"error": "Unable to connect to the server"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Unable to connect to the server"})
 	}
 
 	resp := response{
@@ -102,7 +103,7 @@ func ShortenURL(c *fiber.Ctx) error {
 		CustomeShort: "",
 		Expiry: body.Expiry,
 		XRateRemaining: 10,
-		XRateLimitReset: 30
+		XRateLimitReset: 30,
 	}
 	r2.Decr(database.Ctx, c.IP())
 
